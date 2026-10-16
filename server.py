@@ -143,6 +143,19 @@ class Handler(BaseHTTPRequestHandler):
             user=self.auth()
             if not user: return self.reply(401,{'error':'Sign in to access your private records.'})
             if self.path=='/api/me': return self.reply(200,public_user(user))
+            if self.path=='/api/my-rank':
+                # Return only the signed-in host's position, never the leaderboard.
+                rank=None
+                if not user['is_admin']:
+                    with connect() as db:
+                        row=db.execute("""WITH totals AS (
+                            SELECT users.id,SUM(sessions.gmv_cents) AS gmv
+                            FROM users JOIN sessions ON sessions.user_id=users.id
+                            WHERE users.is_admin=0 GROUP BY users.id
+                        ) SELECT 1+(SELECT COUNT(*) FROM totals other WHERE other.gmv>mine.gmv) AS position
+                        FROM totals mine WHERE mine.id=?""",(user['id'],)).fetchone()
+                        if row: rank=row['position']
+                return self.reply(200,{'rank':rank,'metric':'gmv','period':'all_time'})
             if self.path=='/api/sessions':
                 with connect() as db:
                     if user['is_admin'] and ADMIN_ALL:

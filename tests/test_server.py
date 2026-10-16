@@ -73,6 +73,15 @@ class PrivateRecordsTests(unittest.TestCase):
    from pathlib import Path
    password=Path(self.tmp.name,'manager-access.txt').read_text().splitlines()[1].split(': ',1)[1]
    self.call(self.admin,'/api/recovery-email',dict(email='manager@example.com',current_password=password));self.call(public,'/api/verify-email',dict(token=sent[-1][1]));self.assertEqual(self.call(self.admin,'/api/me')['email'],'manager@example.com')
+ def test_private_host_rank(self):
+  a,aa=self.host('aina');b,bb=self.host('budi');c,cc=self.host('citra')
+  self.denied(401,self.client(),'/api/my-rank');self.assertIsNone(self.call(a,'/api/my-rank')['rank']);self.assertIsNone(self.call(self.admin,'/api/my-rank')['rank'])
+  data=dict(start='2026-10-16T12:00',end='2026-10-16T13:00',gmv='100',views=50,notes='')
+  ar=self.call(a,'/api/sessions',data);self.call(b,'/api/sessions',dict(data,gmv='200'));self.call(c,'/api/sessions',dict(data,gmv='200'));self.call(self.admin,'/api/sessions',dict(data,gmv='9999'))
+  result=self.call(a,'/api/my-rank');self.assertEqual(result,{'rank':3,'metric':'gmv','period':'all_time'});self.assertEqual(self.call(b,'/api/my-rank')['rank'],1);self.assertEqual(self.call(c,'/api/my-rank')['rank'],1)
+  # Query arguments cannot select another host's position.
+  self.denied(404,a,'/api/my-rank?user_id='+str(bb['id']))
+  self.call(a,'/api/edit-session',dict(data,id=ar['id'],gmv='300'));self.assertEqual(self.call(a,'/api/my-rank')['rank'],1);self.assertEqual(self.call(b,'/api/my-rank')['rank'],2)
  def test_existing_database_migrates(self):
   other=os.path.join(self.tmp.name,'old.sqlite3');old=server.DB
   with sqlite3.connect(other) as db:db.execute('CREATE TABLE sessions(id INTEGER PRIMARY KEY,host TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,gmv_cents INTEGER NOT NULL,views INTEGER NOT NULL,notes TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP)')

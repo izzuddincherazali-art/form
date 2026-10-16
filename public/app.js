@@ -29,7 +29,7 @@ async function api(path, data) {
  const response=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
  const result=await response.json(); if(!response.ok){const error=new Error(result.error || 'Request failed');error.status=response.status;throw error;}return result;
 }
-function clearPrivateData(){cancelEdit();$('email-settings').hidden=true;$('email-form').reset();$('email-dialog').close();$('change-password').hidden=true;$('password-form').reset();$('password-dialog').close();sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
+function clearPrivateData(){$('my-rank-card').hidden=true;$('my-rank').textContent='—';cancelEdit();$('email-settings').hidden=true;$('email-form').reset();$('email-dialog').close();$('change-password').hidden=true;$('password-form').reset();$('password-dialog').close();sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
 async function load() {
  try {
  currentUser=await api('/api/me');
@@ -41,14 +41,14 @@ async function load() {
  $('host-filter').replaceChildren(new Option('All hosts',''));
  for(const host of hosts) $('host-filter').add(new Option(host.name,String(host.id)));
  $('host-filter').hidden=!currentUser.can_view_all;
- sessions=await api('/api/sessions'); render();
+ sessions=await api('/api/sessions'); render();await loadRank();
  }catch(error){clearPrivateData();$('empty').textContent=error.message;if(error.status===401 && !resetToken && !verifyToken && !$('login').open)$('login').showModal();}
 }
 $('session-form').addEventListener('submit',async event=>{
  event.preventDefault(); const form=event.target; const data=Object.fromEntries(new FormData(form));
  if(data.end<=data.start) { $('form-status').textContent='End time must be after start time.'; return; }
  $('save').disabled=true; $('form-status').textContent='Saving session…';
- try { const result=await api(editingId?'/api/edit-session':'/api/sessions',editingId?{...data,id:editingId}:data);sessions=sessions.filter(r=>r.id!==result.id); sessions.push(result); sessions.sort((a,b)=>b.start.localeCompare(a.start)||b.id-a.id); render(); form.reset(); $('host-name').value=currentUser.name; cancelEdit();$('form-status').textContent='Session saved successfully.'; }
+ try { const result=await api(editingId?'/api/edit-session':'/api/sessions',editingId?{...data,id:editingId}:data);sessions=sessions.filter(r=>r.id!==result.id); sessions.push(result); sessions.sort((a,b)=>b.start.localeCompare(a.start)||b.id-a.id); render(); form.reset(); $('host-name').value=currentUser.name; cancelEdit();$('form-status').textContent='Session saved successfully.';await loadRank(); }
  catch(error) { $('form-status').textContent=error.message; }
  finally { $('save').disabled=false; }
 });
@@ -96,6 +96,12 @@ $('password-form').addEventListener('submit',async event=>{
  catch(error){$('password-status').textContent=error.message;}
  finally{$('save-password').disabled=false;}
 });
+async function loadRank(){
+ $('my-rank-card').hidden=!currentUser||Boolean(currentUser.is_admin);
+ if(!currentUser||currentUser.is_admin)return;
+ try{const result=await api('/api/my-rank');$('my-rank').textContent=result.rank===null?'Not ranked yet':'#'+number(result.rank);$('rank-caption').textContent=result.rank===null?'Record your first live session to receive your rank.':'Based on all-time recorded GMV. Equal totals share a rank.';}
+ catch(error){$('my-rank').textContent='Unavailable';$('rank-caption').textContent='Your rank could not load. Refresh to try again.';}
+}
 function cancelEdit(){editingId=null;$('session-form').reset();$('host-name').value=currentUser?.name||'';$('entry-title').textContent='Record a live session';$('save').textContent='Save session';$('cancel-edit').hidden=true;}
 $('cancel-edit').addEventListener('click',cancelEdit);
 $('forgot-password').addEventListener('click',()=>{$('forgot-status').textContent='';$('forgot-dialog').showModal();});

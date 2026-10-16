@@ -23,3 +23,6 @@ Each host can choose Edit on their own session, update its times, GMV, views or 
 Configure SMTP_HOST, SMTP_PORT (587 by default), SMTP_TLS (starttls or ssl), SMTP_FROM, SMTP_USER, SMTP_PASSWORD and PUBLIC_URL=https://sampin-live-host.synology.me/ in the NAS project environment. Keep SMTP credentials out of GitHub. SMTP always uses TLS and certificate verification.
 
 Each host and manager must open Recovery email, enter an email and current password, then confirm the verification link received by email. Existing accounts have no recovery email until this step is completed. Forgot password sends a single-use reset link to the verified email. Links expire after 20 minutes; successful resets revoke all sign-ins. Tokens are hashed in the database and sent in URL fragments so they do not appear in server request logs. Unknown email addresses receive the same response. Without SMTP configuration the form reports that email recovery is unavailable.
+
+## Private host rank
+Hosts see only their own all-time GMV rank. Rankings include non-manager accounts with at least one recorded session. Equal GMV totals share a rank (1, 1, 3). Unassigned legacy records and manager sessions are excluded. No other host names, totals, or leaderboard rows are returned by the rank API. Rank refreshes on sign-in, page reload and after saving or editing a session.
