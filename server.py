@@ -80,6 +80,8 @@ def initialize():
         db.execute('CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, host TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, gmv_cents INTEGER NOT NULL, views INTEGER NOT NULL, notes TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP, user_id INTEGER REFERENCES users(id))')
         if 'user_id' not in [r['name'] for r in db.execute('PRAGMA table_info(sessions)')]:
             db.execute('ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)')
+        if 'cohost_id' not in [r['name'] for r in db.execute('PRAGMA table_info(sessions)')]:
+            db.execute('ALTER TABLE sessions ADD COLUMN cohost_id INTEGER REFERENCES users(id)')
         db.execute('CREATE INDEX IF NOT EXISTS sessions_owner ON sessions(user_id)')
         db.execute('CREATE TABLE IF NOT EXISTS logins(token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL)')
         if not db.execute('SELECT 1 FROM users WHERE is_admin=1').fetchone():
@@ -92,6 +94,15 @@ def initialize():
 
 def public_user(user):
     return {k:user[k] for k in ('id','username','name','is_admin','email')} | {'can_view_all':bool(user['is_admin'] and ADMIN_ALL), 'email_enabled':mail_ready()}
+
+def validate_cohost(db, value, user_id):
+    if value is None or value=='': return None
+    if isinstance(value,bool) or not re.fullmatch(r'[0-9]+',str(value)):
+        raise ValueError('Choose a valid co-host.')
+    cohost_id=int(value)
+    if cohost_id==user_id or not db.execute('SELECT 1 FROM users WHERE id=? AND is_admin=0',(cohost_id,)).fetchone():
+        raise ValueError('Choose another host as your co-host.')
+    return cohost_id
 
 def validate(data):
     host = str(data.get('host', '')).strip()
@@ -143,6 +154,9 @@ class Handler(BaseHTTPRequestHandler):
             user=self.auth()
             if not user: return self.reply(401,{'error':'Sign in to access your private records.'})
             if self.path=='/api/me': return self.reply(200,public_user(user))
+            if self.path=='/api/cohosts':
+                with connect() as db:
+                    return self.reply(200,[dict(r) for r in db.execute('SELECT id,name FROM users WHERE is_admin=0 AND id<>? ORDER BY name,id',(user['id'],))])
             if self.path=='/api/my-rank':
                 # Return only the signed-in host's position, never the leaderboard.
                 rank=None
@@ -159,9 +173,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path=='/api/sessions':
                 with connect() as db:
                     if user['is_admin'] and ADMIN_ALL:
-                        rows=db.execute('SELECT * FROM sessions ORDER BY start DESC,id DESC')
+                        rows=db.execute('SELECT sessions.*,cohost.name AS cohost_name FROM sessions LEFT JOIN users cohost ON cohost.id=sessions.cohost_id ORDER BY sessions.start DESC,sessions.id DESC')
                     else:
-                        rows=db.execute('SELECT * FROM sessions WHERE user_id=? ORDER BY start DESC,id DESC',(user['id'],))
+                        rows=db.execute('SELECT sessions.*,cohost.name AS cohost_name FROM sessions LEFT JOIN users cohost ON cohost.id=sessions.cohost_id WHERE sessions.user_id=? ORDER BY sessions.start DESC,sessions.id DESC',(user['id'],))
                     return self.reply(200,[dict(r) for r in rows])
             if self.path=='/api/users' and user['is_admin']:
                 with connect() as db:
@@ -304,17 +318,19 @@ class Handler(BaseHTTPRequestHandler):
                 data['host']=user['name']
                 values=validate(data)
                 with connect() as db:
-                    cursor=db.execute('UPDATE sessions SET host=?,start=?,end=?,gmv_cents=?,views=?,notes=? WHERE id=? AND user_id=?',(*values,data.get('id'),user['id']))
+                    cohost_id=validate_cohost(db,data.get('cohost_id'),user['id'])
+                    cursor=db.execute('UPDATE sessions SET host=?,start=?,end=?,gmv_cents=?,views=?,notes=?,cohost_id=? WHERE id=? AND user_id=?',(*values,cohost_id,data.get('id'),user['id']))
                     if not cursor.rowcount: return self.reply(404,{'error':'Session not found.'})
-                    result=dict(db.execute('SELECT * FROM sessions WHERE id=?',(data['id'],)).fetchone())
+                    result=dict(db.execute('SELECT sessions.*,cohost.name AS cohost_name FROM sessions LEFT JOIN users cohost ON cohost.id=sessions.cohost_id WHERE sessions.id=?',(data['id'],)).fetchone())
                 return self.reply(200,result)
             if self.path!='/api/sessions': return self.reply(404,{'error':'Not found'})
             # Identity is always derived from the login, never a submitted host/user_id.
             data['host']=user['name']
             values=validate(data)
             with connect() as db:
-                cursor=db.execute('INSERT INTO sessions(host,start,end,gmv_cents,views,notes,user_id) VALUES(?,?,?,?,?,?,?)',(*values,user['id']))
-                result=dict(db.execute('SELECT * FROM sessions WHERE id=?',(cursor.lastrowid,)).fetchone())
+                cohost_id=validate_cohost(db,data.get('cohost_id'),user['id'])
+                cursor=db.execute('INSERT INTO sessions(host,start,end,gmv_cents,views,notes,user_id,cohost_id) VALUES(?,?,?,?,?,?,?,?)',(*values,user['id'],cohost_id))
+                result=dict(db.execute('SELECT sessions.*,cohost.name AS cohost_name FROM sessions LEFT JOIN users cohost ON cohost.id=sessions.cohost_id WHERE sessions.id=?',(cursor.lastrowid,)).fetchone())
             return self.reply(201,result)
         except sqlite3.IntegrityError:
             return self.reply(409,{'error':'That username is already taken.'})

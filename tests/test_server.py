@@ -82,6 +82,16 @@ class PrivateRecordsTests(unittest.TestCase):
   # Query arguments cannot select another host's position.
   self.denied(404,a,'/api/my-rank?user_id='+str(bb['id']))
   self.call(a,'/api/edit-session',dict(data,id=ar['id'],gmv='300'));self.assertEqual(self.call(a,'/api/my-rank')['rank'],1);self.assertEqual(self.call(b,'/api/my-rank')['rank'],2)
+ def test_cohost_personal_results_and_edit(self):
+  a,aa=self.host('aina');b,bb=self.host('budi')
+  directory=self.call(a,'/api/cohosts');self.assertEqual(directory,[{'id':bb['id'],'name':'Budi'}]);self.denied(401,self.client(),'/api/cohosts')
+  data=dict(start='2026-10-16T12:00',end='2026-10-16T13:00',gmv='100',views=50,notes='',cohost_id=bb['id'])
+  record=self.call(a,'/api/sessions',data);self.assertEqual(record['cohost_id'],bb['id']);self.assertEqual(record['cohost_name'],'Budi');self.assertEqual(record['user_id'],aa['id']);self.assertEqual(self.call(b,'/api/sessions'),[])
+  self.assertIsNone(self.call(b,'/api/my-rank')['rank']);self.assertEqual(self.call(a,'/api/my-rank')['rank'],1)
+  self.assertEqual(self.call(a,'/api/sessions')[0]['cohost_name'],'Budi')
+  for invalid in (aa['id'],999999,'bad',True):self.denied(400,a,'/api/sessions',dict(data,cohost_id=invalid))
+  self.denied(404,b,'/api/edit-session',dict(data,id=record['id'],cohost_id=''))
+  edited=self.call(a,'/api/edit-session',dict(data,id=record['id'],cohost_id='',gmv='150'));self.assertIsNone(edited['cohost_id']);self.assertIsNone(edited['cohost_name']);self.assertEqual(edited['gmv_cents'],15000)
  def test_existing_database_migrates(self):
   other=os.path.join(self.tmp.name,'old.sqlite3');old=server.DB
   with sqlite3.connect(other) as db:db.execute('CREATE TABLE sessions(id INTEGER PRIMARY KEY,host TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,gmv_cents INTEGER NOT NULL,views INTEGER NOT NULL,notes TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP)')

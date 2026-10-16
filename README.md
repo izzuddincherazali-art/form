@@ -26,3 +26,8 @@ Each host and manager must open Recovery email, enter an email and current passw
 
 ## Private host rank
 Hosts see only their own all-time GMV rank. Rankings include non-manager accounts with at least one recorded session. Equal GMV totals share a rank (1, 1, 3). Unassigned legacy records and manager sessions are excluded. No other host names, totals, or leaderboard rows are returned by the rank API. Rank refreshes on sign-in, page reload and after saving or editing a session.
+
+## Paired live sessions and manager graph
+Hosts can optionally select a co-host when adding or editing a session. The selector returns only host IDs and display names. Each submission contains the submitting host's personal GMV and views. Selecting a co-host does not share the record with that account, copy results, or change ranking ownership. CSV exports include the co-host name.
+
+The manager's all-host chart draws a separate daily line and legend entry for each host. GMV/views, 7/30 day periods and the individual host filter work with these lines. Legacy unassigned records are labeled separately. Host dashboards still receive only their own session data.
