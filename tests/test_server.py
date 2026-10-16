@@ -30,6 +30,20 @@ class PrivateRecordsTests(unittest.TestCase):
   with server.connect() as db:
    row=db.execute('SELECT * FROM users WHERE username=?',('aina',)).fetchone();self.assertNotEqual(row['password_hash'],account['password']);db.execute('UPDATE logins SET expires=0 WHERE user_id=?',(account['id'],))
   self.denied(401,a,'/api/me')
+ def test_password_change_for_hosts_and_manager(self):
+  a,account=self.host('aina');second=self.client();self.call(second,'/api/login',account)
+  change=dict(current_password=account['password'],new_password='NewPassword2345',confirm_password='NewPassword2345',user_id=1)
+  self.denied(401,self.client(),'/api/change-password',change)
+  self.denied(403,a,'/api/change-password',dict(change,current_password='wrong'))
+  self.denied(400,a,'/api/change-password',dict(change,confirm_password='different'))
+  self.denied(400,a,'/api/change-password',dict(change,new_password='short',confirm_password='short'))
+  self.call(a,'/api/change-password',change);self.denied(401,a,'/api/me');self.denied(401,second,'/api/me')
+  self.denied(401,self.client(),'/api/login',account)
+  self.call(a,'/api/login',dict(username='aina',password=change['new_password']));self.assertEqual(self.call(a,'/api/me')['id'],account['id'])
+  from pathlib import Path
+  initial=Path(self.tmp.name,'manager-access.txt').read_text().splitlines()[1].split(': ',1)[1]
+  change=dict(current_password=initial,new_password='ManagerNew2345',confirm_password='ManagerNew2345')
+  self.call(self.admin,'/api/change-password',change);self.denied(401,self.admin,'/api/me');self.call(self.admin,'/api/login',dict(username='manager',password='ManagerNew2345'));self.assertTrue(self.call(self.admin,'/api/me')['is_admin'])
  def test_existing_database_migrates(self):
   other=os.path.join(self.tmp.name,'old.sqlite3');old=server.DB
   with sqlite3.connect(other) as db:db.execute('CREATE TABLE sessions(id INTEGER PRIMARY KEY,host TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,gmv_cents INTEGER NOT NULL,views INTEGER NOT NULL,notes TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP)')

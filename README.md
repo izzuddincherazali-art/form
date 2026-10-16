@@ -13,3 +13,5 @@ Upload Dockerfile, server.py, bootstrap.py, compose.yaml and the public folder t
 
 ## Local development
 Use Python 3.12+ and run `python server.py`; open http://127.0.0.1:8000. The local manager access file is in data/. To test: `python -m unittest discover -s tests`.
+
+Hosts and managers can choose Change password in the header. They must enter their current password and confirm a new password (12–128 characters). A successful change signs out all devices. The manager access file contains the initial password only.

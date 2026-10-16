@@ -156,6 +156,30 @@ class Handler(BaseHTTPRequestHandler):
                 token=cookies['live_session'].value
                 with connect() as db: db.execute('DELETE FROM logins WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),))
                 return self.reply(200,{'ok':True},cookie=self.cookie('',True))
+            if self.path=='/api/change-password':
+                current=str(data.get('current_password',''))
+                password=str(data.get('new_password',''))
+                if len(current)>1000 or not 12<=len(password)<=128:
+                    raise ValueError('Use a new password between 12 and 128 characters.')
+                if password!=str(data.get('confirm_password','')):
+                    raise ValueError('New passwords do not match.')
+                if password==current: raise ValueError('Choose a different new password.')
+                now=time.time()
+                key='change:'+str(user['id'])
+                with AUTH_LOCK:
+                    times=[t for t in ATTEMPTS.get(key,[]) if now-t<300]
+                    if len(times)>=10: return self.reply(429,{'error':'Too many attempts. Try again in five minutes.'})
+                    ATTEMPTS[key]=times+[now]
+                with connect() as db:
+                    db.execute('BEGIN IMMEDIATE')
+                    fresh=db.execute('SELECT * FROM users WHERE id=?',(user['id'],)).fetchone()
+                    if not secrets.compare_digest(password_hash(current,fresh['salt']),fresh['password_hash']):
+                        return self.reply(403,{'error':'Current password is incorrect.'})
+                    salt=secrets.token_hex(16)
+                    db.execute('UPDATE users SET salt=?,password_hash=? WHERE id=?',(salt,password_hash(password,salt),user['id']))
+                    db.execute('DELETE FROM logins WHERE user_id=?',(user['id'],))
+                with AUTH_LOCK: ATTEMPTS.pop(key,None)
+                return self.reply(200,{'ok':True},cookie=self.cookie('',True))
             if self.path=='/api/users':
                 if not user['is_admin']: return self.reply(403,{'error':'Manager access required.'})
                 password=generate_password()

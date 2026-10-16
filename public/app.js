@@ -25,11 +25,11 @@ async function api(path, data) {
  const response=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
  const result=await response.json(); if(!response.ok){const error=new Error(result.error || 'Request failed');error.status=response.status;throw error;}return result;
 }
-function clearPrivateData(){sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
+function clearPrivateData(){$('change-password').hidden=true;$('password-form').reset();$('password-dialog').close();sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
 async function load() {
  try {
  currentUser=await api('/api/me');
- $('access').textContent=currentUser.name+' · Sign out';
+ $('access').textContent=currentUser.name+' · Sign out';$('change-password').hidden=false;
  $('host-name').value=currentUser.name;
  document.querySelector('h1').textContent=currentUser.can_view_all?'Team performance':'My performance';
  $('admin-panel').hidden=!currentUser.is_admin;
@@ -81,4 +81,15 @@ function drawChart(){
  $('chart-summary').textContent=(metric==='gmv'?money(total):number(total)+' views')+' across the last '+days+' days. Hover a point for its daily total.';
 }
 
+$('change-password').addEventListener('click',()=>{$('password-form').reset();$('password-status').textContent='';$('password-dialog').showModal();});
+$('cancel-password').addEventListener('click',()=>{$('password-form').reset();$('password-dialog').close();});
+$('password-dialog').addEventListener('cancel',()=>{$('password-form').reset();});
+$('password-form').addEventListener('submit',async event=>{
+ event.preventDefault();const data=Object.fromEntries(new FormData(event.target));
+ if(data.new_password!==data.confirm_password){$('password-status').textContent='New passwords do not match.';return;}
+ $('save-password').disabled=true;$('password-status').textContent='Saving…';
+ try{await api('/api/change-password',data);clearPrivateData();$('login-status').textContent='Password changed. Sign in with your new password.';$('login').showModal();}
+ catch(error){$('password-status').textContent=error.message;}
+ finally{$('save-password').disabled=false;}
+});
 load();
