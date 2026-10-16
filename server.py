@@ -20,6 +20,10 @@ def connect():
 def password_hash(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
 
+def generate_password():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(12))
+
 def add_user(db, username, name, password, admin=0):
     username = str(username).strip().lower()
     name = str(name).strip()
@@ -38,7 +42,7 @@ def initialize():
         db.execute('CREATE INDEX IF NOT EXISTS sessions_owner ON sessions(user_id)')
         db.execute('CREATE TABLE IF NOT EXISTS logins(token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL)')
         if not db.execute('SELECT 1 FROM users WHERE is_admin=1').fetchone():
-            password = secrets.token_urlsafe(24)
+            password = generate_password()
             username = 'manager'
             access = Path(DB).parent / 'manager-access.txt'
             with open(access, 'w', opener=lambda p,f: os.open(p,f,0o600)) as f:
@@ -154,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200,{'ok':True},cookie=self.cookie('',True))
             if self.path=='/api/users':
                 if not user['is_admin']: return self.reply(403,{'error':'Manager access required.'})
-                password=secrets.token_urlsafe(18)
+                password=generate_password()
                 with connect() as db:
                     uid=add_user(db,data.get('username',''),data.get('name',''),password)
                 return self.reply(201,{'id':uid,'username':str(data['username']).strip().lower(),'password':password})
