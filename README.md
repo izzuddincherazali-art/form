@@ -15,3 +15,11 @@ Upload Dockerfile, server.py, bootstrap.py, compose.yaml and the public folder t
 Use Python 3.12+ and run `python server.py`; open http://127.0.0.1:8000. The local manager access file is in data/. To test: `python -m unittest discover -s tests`.
 
 Hosts and managers can choose Change password in the header. They must enter their current password and confirm a new password (12–128 characters). A successful change signs out all devices. The manager access file contains the initial password only.
+
+## Edit session records
+Each host can choose Edit on their own session, update its times, GMV, views or notes, and save changes. Ownership is enforced by the server. Manager can edit only the manager account's own sessions. No delete control is provided.
+
+## Email password recovery
+Configure SMTP_HOST, SMTP_PORT (587 by default), SMTP_TLS (starttls or ssl), SMTP_FROM, SMTP_USER, SMTP_PASSWORD and PUBLIC_URL=https://sampin-live-host.synology.me/ in the NAS project environment. Keep SMTP credentials out of GitHub. SMTP always uses TLS and certificate verification.
+
+Each host and manager must open Recovery email, enter an email and current password, then confirm the verification link received by email. Existing accounts have no recovery email until this step is completed. Forgot password sends a single-use reset link to the verified email. Links expire after 20 minutes; successful resets revoke all sign-ins. Tokens are hashed in the database and sent in URL fragments so they do not appear in server request logs. Unknown email addresses receive the same response. Without SMTP configuration the form reports that email recovery is unavailable.

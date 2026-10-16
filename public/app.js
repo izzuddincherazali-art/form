@@ -1,6 +1,10 @@
 let sessions = [];
 let currentUser = null;
 let hosts = [];
+let editingId=null;
+const recoveryFragment=new URLSearchParams(location.hash.slice(1));
+const resetToken=recoveryFragment.get("reset"),verifyToken=recoveryFragment.get("verify");
+if(resetToken||verifyToken)history.replaceState(null,"",location.pathname);
 sessionStorage.removeItem('live-token');
 const $ = id => document.getElementById(id);
 const money = value => new Intl.NumberFormat('en-MY', {style:'currency',currency:'MYR'}).format(value);
@@ -15,7 +19,7 @@ function render() {
  $('count').textContent = number(selectedSessions().length);
  $('hours').textContent = selectedSessions().reduce((s,r)=>s+duration(r),0).toFixed(1)+' hrs';
  const rows = filtered(); $('records').replaceChildren();
- for(const record of rows) { const tr = document.createElement('tr'); cell(tr,record.host,new Date(record.start+'+08:00').toLocaleString('en-MY',{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'})); cell(tr,money(record.gmv_cents/100)); cell(tr,number(record.views)); cell(tr,duration(record).toFixed(2)+' hrs'); cell(tr,record.notes || '—'); if(currentUser?.can_view_all && record.user_id === null) { const select=document.createElement('select'); const option=document.createElement('option'); option.textContent='Assign legacy record…';option.value='';select.append(option);for(const host of hosts){const op=document.createElement('option');op.value=host.id;op.textContent=host.name;select.append(op);}select.addEventListener('change',async()=>{if(!select.value)return;try{await api('/api/assign',{id:record.id,user_id:Number(select.value)});await load();}catch(e){$('form-status').textContent=e.message;}});tr.lastChild.append(select); } $('records').append(tr); }
+ for(const record of rows) { const tr = document.createElement('tr'); cell(tr,record.host,new Date(record.start+'+08:00').toLocaleString('en-MY',{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'})); cell(tr,money(record.gmv_cents/100)); cell(tr,number(record.views)); cell(tr,duration(record).toFixed(2)+' hrs'); cell(tr,record.notes || '—'); if(currentUser?.can_view_all && record.user_id === null) { const select=document.createElement('select'); const option=document.createElement('option'); option.textContent='Assign legacy record…';option.value='';select.append(option);for(const host of hosts){const op=document.createElement('option');op.value=host.id;op.textContent=host.name;select.append(op);}select.addEventListener('change',async()=>{if(!select.value)return;try{await api('/api/assign',{id:record.id,user_id:Number(select.value)});await load();}catch(e){$('form-status').textContent=e.message;}});tr.lastChild.append(select); } const actions=document.createElement('td');if(record.user_id===currentUser?.id){const edit=document.createElement('button');edit.type='button';edit.className='button';edit.textContent='Edit';edit.addEventListener('click',()=>{editingId=record.id;const form=$('session-form');for(const field of ['start','end','views','notes'])form.elements[field].value=record[field];form.elements.gmv.value=(record.gmv_cents/100).toFixed(2);$('entry-title').textContent='Edit live session';$('save').textContent='Save changes';$('cancel-edit').hidden=false;$('form-status').textContent='Editing your session.';$('entry').scrollIntoView({behavior:'smooth'});});actions.append(edit);}tr.append(actions);$('records').append(tr); }
  $('results').textContent = rows.length+' sessions'; $('empty').hidden = rows.length > 0;
  $('empty').textContent = sessions.length ? 'No hosts match your search.' : 'No sessions yet. Record your first live above.';
  $('export').disabled = rows.length === 0;
@@ -25,11 +29,11 @@ async function api(path, data) {
  const response=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
  const result=await response.json(); if(!response.ok){const error=new Error(result.error || 'Request failed');error.status=response.status;throw error;}return result;
 }
-function clearPrivateData(){$('change-password').hidden=true;$('password-form').reset();$('password-dialog').close();sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
+function clearPrivateData(){cancelEdit();$('email-settings').hidden=true;$('email-form').reset();$('email-dialog').close();$('change-password').hidden=true;$('password-form').reset();$('password-dialog').close();sessions=[];hosts=[];currentUser=null;$('host-name').value='';$('host-credentials').textContent='';$('host-credentials').hidden=true;$('admin-panel').hidden=true;$('host-filter').hidden=true;$('access').textContent='Sign in';render();}
 async function load() {
  try {
  currentUser=await api('/api/me');
- $('access').textContent=currentUser.name+' · Sign out';$('change-password').hidden=false;
+ $('access').textContent=currentUser.name+' · Sign out';$('change-password').hidden=false;$('email-settings').hidden=false;
  $('host-name').value=currentUser.name;
  document.querySelector('h1').textContent=currentUser.can_view_all?'Team performance':'My performance';
  $('admin-panel').hidden=!currentUser.is_admin;
@@ -38,13 +42,13 @@ async function load() {
  for(const host of hosts) $('host-filter').add(new Option(host.name,String(host.id)));
  $('host-filter').hidden=!currentUser.can_view_all;
  sessions=await api('/api/sessions'); render();
- }catch(error){clearPrivateData();$('empty').textContent=error.message;if(error.status===401 && !$('login').open)$('login').showModal();}
+ }catch(error){clearPrivateData();$('empty').textContent=error.message;if(error.status===401 && !resetToken && !verifyToken && !$('login').open)$('login').showModal();}
 }
 $('session-form').addEventListener('submit',async event=>{
  event.preventDefault(); const form=event.target; const data=Object.fromEntries(new FormData(form));
  if(data.end<=data.start) { $('form-status').textContent='End time must be after start time.'; return; }
  $('save').disabled=true; $('form-status').textContent='Saving session…';
- try { const result=await api('/api/sessions',data); sessions.push(result); sessions.sort((a,b)=>b.start.localeCompare(a.start)||b.id-a.id); render(); form.reset(); $('host-name').value=currentUser.name; $('form-status').textContent='Session saved successfully.'; }
+ try { const result=await api(editingId?'/api/edit-session':'/api/sessions',editingId?{...data,id:editingId}:data);sessions=sessions.filter(r=>r.id!==result.id); sessions.push(result); sessions.sort((a,b)=>b.start.localeCompare(a.start)||b.id-a.id); render(); form.reset(); $('host-name').value=currentUser.name; cancelEdit();$('form-status').textContent='Session saved successfully.'; }
  catch(error) { $('form-status').textContent=error.message; }
  finally { $('save').disabled=false; }
 });
@@ -92,4 +96,17 @@ $('password-form').addEventListener('submit',async event=>{
  catch(error){$('password-status').textContent=error.message;}
  finally{$('save-password').disabled=false;}
 });
+function cancelEdit(){editingId=null;$('session-form').reset();$('host-name').value=currentUser?.name||'';$('entry-title').textContent='Record a live session';$('save').textContent='Save session';$('cancel-edit').hidden=true;}
+$('cancel-edit').addEventListener('click',cancelEdit);
+$('forgot-password').addEventListener('click',()=>{$('forgot-status').textContent='';$('forgot-dialog').showModal();});
+$('close-forgot').addEventListener('click',()=>{$('forgot-dialog').close();$('forgot-form').reset();});
+$('forgot-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.target.querySelector('.primary');b.disabled=true;try{const result=await api('/api/forgot-password',Object.fromEntries(new FormData(e.target)));$('forgot-status').textContent=result.message;}catch(error){$('forgot-status').textContent=error.message;}finally{b.disabled=false;}});
+$('email-settings').addEventListener('click',()=>{$('email-form').reset();$('email-status').textContent='';$('email-current').textContent=currentUser.email?'Verified email: '+currentUser.email:'No verified recovery email yet.';$('email-dialog').showModal();});
+$('close-email').addEventListener('click',()=>{$('email-form').reset();$('email-dialog').close();});
+$('email-dialog').addEventListener('cancel',()=>{$('email-form').reset();});
+$('email-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.target.querySelector('.primary');b.disabled=true;try{await api('/api/recovery-email',Object.fromEntries(new FormData(e.target)));e.target.reset();$('email-status').textContent='Verification link sent. Check your inbox.';}catch(error){$('email-status').textContent=error.message;}finally{b.disabled=false;}});
+$('reset-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;try{await api('/api/reset-password',{...Object.fromEntries(new FormData(e.target)),token:resetToken});e.target.reset();$('reset-dialog').close();clearPrivateData();$('login-status').textContent='Password reset. Sign in with your new password.';if(!$('login').open)$('login').showModal();}catch(error){$('reset-status').textContent=error.message;}finally{b.disabled=false;}});
+$('verify-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;try{await api('/api/verify-email',{token:verifyToken});$('verify-status').textContent='Email verified. You can now use Forgot password.';b.hidden=true;}catch(error){$('verify-status').textContent=error.message;b.disabled=false;}});
+if(resetToken)$('reset-dialog').showModal();
+if(verifyToken)$('verify-dialog').showModal();
 load();

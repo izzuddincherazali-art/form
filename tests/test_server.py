@@ -3,7 +3,7 @@ import server
 class PrivateRecordsTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();server.DB=os.path.join(self.tmp.name,'records.sqlite3');server.ADMIN_ALL=True;server.SECURE=False
-  server.initialize();self.http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);threading.Thread(target=self.http.serve_forever,daemon=True).start();self.base=f'http://127.0.0.1:{self.http.server_port}'
+  server.ATTEMPTS.clear();server.initialize();self.http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);threading.Thread(target=self.http.serve_forever,daemon=True).start();self.base=f'http://127.0.0.1:{self.http.server_port}'
   self.admin=self.client();access=open(os.path.join(self.tmp.name,'manager-access.txt')).read().splitlines();self.call(self.admin,'/api/login',{'username':'manager','password':access[1].split(': ',1)[1]})
  def tearDown(self):self.http.shutdown();self.http.server_close();self.tmp.cleanup()
  def client(self):return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -44,6 +44,35 @@ class PrivateRecordsTests(unittest.TestCase):
   initial=Path(self.tmp.name,'manager-access.txt').read_text().splitlines()[1].split(': ',1)[1]
   change=dict(current_password=initial,new_password='ManagerNew2345',confirm_password='ManagerNew2345')
   self.call(self.admin,'/api/change-password',change);self.denied(401,self.admin,'/api/me');self.call(self.admin,'/api/login',dict(username='manager',password='ManagerNew2345'));self.assertTrue(self.call(self.admin,'/api/me')['is_admin'])
+ def test_edit_only_owned_sessions(self):
+  a,aa=self.host('aina');b,bb=self.host('budi')
+  data=dict(start='2026-10-16T12:00',end='2026-10-16T13:00',gmv='100',views=50,notes='before')
+  record=self.call(a,'/api/sessions',data)
+  edit=dict(data,id=record['id'],gmv='250.75',notes='after',host='Budi',user_id=bb['id'])
+  self.denied(401,self.client(),'/api/edit-session',edit);self.denied(404,b,'/api/edit-session',edit);self.denied(404,self.admin,'/api/edit-session',edit)
+  updated=self.call(a,'/api/edit-session',edit);self.assertEqual(updated['gmv_cents'],25075);self.assertEqual(updated['notes'],'after');self.assertEqual(updated['user_id'],aa['id']);self.assertEqual(updated['host'],'Aina')
+ def test_email_recovery_verify_reset_and_expiry(self):
+  from unittest.mock import patch
+  a,account=self.host('aina');sent=[]
+  with patch.dict(os.environ,{'SMTP_HOST':'smtp.example.com','SMTP_FROM':'desk@example.com','PUBLIC_URL':'https://live.example.com'}),patch.object(server,'send_link',side_effect=lambda address,token,purpose:sent.append((address,token,purpose))):
+   self.denied(403,a,'/api/recovery-email',dict(email='aina@example.com',current_password='wrong'))
+   self.call(a,'/api/recovery-email',dict(email='aina@example.com',current_password=account['password']))
+   self.assertEqual(self.call(a,'/api/me')['email'],'');token=sent[-1][1]
+   self.call(self.client(),'/api/verify-email',dict(token=token));self.denied(400,self.client(),'/api/verify-email',dict(token=token));self.assertEqual(self.call(a,'/api/me')['email'],'aina@example.com')
+   public=self.client();known=self.call(public,'/api/forgot-password',dict(email='aina@example.com'));unknown=self.call(public,'/api/forgot-password',dict(email='unknown@example.com'));self.assertEqual(known,unknown)
+   token=sent[-1][1]
+   with server.connect() as db:self.assertFalse(db.execute('SELECT 1 FROM recovery WHERE token_hash=?',(token,)).fetchone())
+   change=dict(token=token,new_password='RecoveredPass234',confirm_password='RecoveredPass234')
+   self.denied(400,public,'/api/reset-password',dict(change,confirm_password='wrong'))
+   self.call(public,'/api/reset-password',change);self.denied(400,public,'/api/reset-password',change);self.denied(401,a,'/api/me');self.denied(401,public,'/api/login',account)
+   self.call(a,'/api/login',dict(username='aina',password='RecoveredPass234'))
+   self.call(public,'/api/forgot-password',dict(email='aina@example.com'));token=sent[-1][1]
+   with server.connect() as db:db.execute('UPDATE recovery SET expires=0')
+   self.denied(400,public,'/api/reset-password',dict(change,token=token))
+   # Manager uses the same verified email recovery flow.
+   from pathlib import Path
+   password=Path(self.tmp.name,'manager-access.txt').read_text().splitlines()[1].split(': ',1)[1]
+   self.call(self.admin,'/api/recovery-email',dict(email='manager@example.com',current_password=password));self.call(public,'/api/verify-email',dict(token=sent[-1][1]));self.assertEqual(self.call(self.admin,'/api/me')['email'],'manager@example.com')
  def test_existing_database_migrates(self):
   other=os.path.join(self.tmp.name,'old.sqlite3');old=server.DB
   with sqlite3.connect(other) as db:db.execute('CREATE TABLE sessions(id INTEGER PRIMARY KEY,host TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,gmv_cents INTEGER NOT NULL,views INTEGER NOT NULL,notes TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP)')
