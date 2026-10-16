@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: live-desk
+    runtime: python
+    plan: starter
+    region: singapore
+    buildCommand: python -m unittest discover -s tests
+    startCommand: python server.py
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /var/data/sessions.sqlite3
+      - key: APP_PASSWORD
+        generateValue: true
+    disk:
+      name: live-records
+      mountPath: /var/data
+      sizeGB: 1
