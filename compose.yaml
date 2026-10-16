@@ -8,6 +8,7 @@ services:
     volumes:
       - live-records:/data
     environment:
+      ADMIN_CAN_VIEW_ALL: "true"
       HOST: 0.0.0.0
       DATABASE_PATH: /data/sessions.sqlite3
     cap_drop:

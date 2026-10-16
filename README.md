@@ -1,35 +1,15 @@
 # Live Desk
+Private TikTok Live reports with a Shopify-inspired dashboard. Tracks host, session times, GMV in MYR, views, history and CSV exports. Daily GMV/views line charts support 7 or 30 days.
 
-A Shopify-inspired TikTok Live reporting dashboard. Hosts record their name, start/end date and time, sales GMV in MYR, views, and optional notes. Includes all-time totals, host search and CSV export. No Shopify or TikTok account integration is required; results are entered manually.
+## Accounts and privacy
+On first start the server generates a manager account. Read `/data/manager-access.txt` inside the container for its username and password. Keep these credentials private. The manager creates individual host accounts in the dashboard; each generated host password is displayed once.
 
-## Run locally
+Hosts can only read and export their own records. Ownership is enforced on the server and comes from the signed-in account. Passwords use salted scrypt hashes; sessions use revocable, 12-hour HttpOnly cookies. Serve behind HTTPS for deployment.
 
-Requires Python 3.10+ (standard library only).
+Set `ADMIN_CAN_VIEW_ALL=true` to let the manager view all reports and filter charts by host. Existing reports stay in the database and remain manager-only until explicitly assigned to a host. Name matches never grant access automatically.
 
-```sh
-python3 server.py
-```
+## Synology deployment
+Upload Dockerfile, server.py, bootstrap.py, compose.yaml and the public folder to a Container Manager project directory. Build the project with compose.yaml. The app listens on localhost port 8088; configure an HTTPS reverse proxy to that port. Preserve the live-records volume during updates: it contains the database and manager access file. Back up that volume regularly.
 
-Open http://127.0.0.1:8000. The SQLite database is created at `data/sessions.sqlite3`. Reloading or restarting preserves records. All session times are Malaysia local time (UTC+8). GMV is stored as integer cents.
-
-## Host for your team
-
-Run on a Python-capable server with a persistent disk. GitHub stores the source code; GitHub Pages cannot run this database server.
-
-```sh
-export HOST=0.0.0.0
-export PORT=8000
-export DATABASE_PATH=/your/persistent/disk/sessions.sqlite3
-export APP_PASSWORD='replace-with-a-long-private-team-password'
-python3 server.py
-```
-
-Use an HTTPS reverse proxy in front of this server, restrict direct access to the backend port, and share the team password privately. A password of at least 12 characters is enforced when binding beyond localhost. Enter it with Team access in the dashboard. It stays in sessionStorage for the browser tab. This first version uses a shared team password: all authorized hosts can view all records. It does not provide separate admin accounts, individual user attribution, edit/delete controls, or automated TikTok imports.
-
-Back up the SQLite file regularly using SQLite's backup API or while the service is stopped. Never commit databases or passwords to GitHub. Keep the database on persistent storage; ephemeral hosting disks lose records on redeploy.
-
-## Validation
-
-```sh
-python3 -m unittest discover -s tests
-```
+## Local development
+Use Python 3.12+ and run `python server.py`; open http://127.0.0.1:8000. The local manager access file is in data/. To test: `python -m unittest discover -s tests`.
